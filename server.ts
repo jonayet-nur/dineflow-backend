@@ -132,7 +132,7 @@ app.get('/api/all-menu/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
 
     // 💡 ২. string id-কে new ObjectId(id) তে কনভার্ট করুন
-    const foodItem = await menuCollection.findOne({ _id: new ObjectId(id) });
+    const foodItem = await menuCollection.findOne({ _id: new ObjectId(id as string) });
 
     if (!foodItem) {
       return res.status(404).json({

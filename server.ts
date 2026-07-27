@@ -1,4 +1,4 @@
-
+import { ObjectId } from 'mongodb'; //   একদম ওপরে এটি ইম্পোর্ট 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -124,6 +124,37 @@ app.get('/api/all-menu', async (req: Request, res: Response) => {
   }
 });
 
+
+
+// 2. GET SINGLE FOOD ITEM BY ID
+app.get('/api/all-menu/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // 💡 ২. string id-কে new ObjectId(id) তে কনভার্ট করুন
+    const foodItem = await menuCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!foodItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'এই আইডি-র কোনো খাবার পাওয়া যায়নি!',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: foodItem,
+    });
+  } catch (error: any) {
+    console.error('Error fetching single food item:', error);
+    res.status(500).json({
+      success: false,
+      message: 'ডেটা ফেচ করতে সমস্যা হয়েছে!',
+      error: error.message,
+    });
+  }
+});
+
 app.get('/api/featured', async (req, res) => {
   try {
     // 'products' এর জায়গায় আপনার MongoDB collection-এর আসল নাম দিন
@@ -133,7 +164,7 @@ app.get('/api/featured', async (req, res) => {
 
     res.status(200).json(featuredItems);
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    res.status(500).json({ message: "Server error"});
   }
 });
 

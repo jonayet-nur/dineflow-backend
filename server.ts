@@ -24,18 +24,19 @@ const client = new MongoClient(uri, {
 });
 
 
+const database = client.db("foodflow");
+const menuCollection = database.collection("all-menu");
 
-async function run() {
-  try {
+// Connect to MongoDB asynchronously, but don't block route registration
+client.connect().then(() => {
+  console.log("Pinged your deployment. You successfully connected to MongoDB!");
+}).catch(console.dir);
 
-     const database = client.db("foodflow");
-    const menuCollection = database.collection("all-menu");
-
-    app.post('/api/all-menu', async(req:Request, res:Response)=>{
-       const menu = req.body;
-       const result = await menuCollection.insertOne(menu);
-       res.send(result);
-    })
+app.post('/api/all-menu', async(req:Request, res:Response)=>{
+   const menu = req.body;
+   const result = await menuCollection.insertOne(menu);
+   res.send(result);
+})
 
 
 // GET ALL MENU ITEMS (Search, Filter, Sort & Pagination সহ)
@@ -167,17 +168,6 @@ app.get('/api/featured', async (req, res) => {
     res.status(500).json({ message: "Server error"});
   }
 });
-
-    await client.connect();
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } catch (error) {
-    console.error("MongoDB Connection Error:", error);
-  } 
-  // NOTE: Production API-er jonno client.close() na korai bhalo, karon API request chalu thake.
-}
-
-run().catch(console.dir);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Hello World!.This is my first express server with typescript.so can be run');

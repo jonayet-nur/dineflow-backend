@@ -136,9 +136,9 @@ app.get('/api/all-menu/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
 
     // 💡 string id-কে new ObjectId(id) তে কনভার্ট করুন এবং string হিসেবেও চেক করুন
-    const query = ObjectId.isValid(id) 
-      ? { $or: [{ _id: new ObjectId(id as string) }, { _id: id }] }
-      : { _id: id };
+    const query = (ObjectId.isValid(id as string) 
+      ? { $or: [{ _id: new ObjectId(id as string) }, { _id: id as string }] }
+      : { _id: id as string }) as any;
 
     const foodItem = await menuCollection.findOne(query);
 
@@ -331,9 +331,9 @@ app.put('/api/all-menu/:id', async (req: Request, res: Response) => {
     // _id ফিল্ড রিমুভ করে দেওয়া হচ্ছে যাতে MongoDB error না দেয়
     delete updatedData._id;
 
-    const query = ObjectId.isValid(id) 
-      ? { $or: [{ _id: new ObjectId(id as string) }, { _id: id }] }
-      : { _id: id };
+    const query = (ObjectId.isValid(id as string) 
+      ? { $or: [{ _id: new ObjectId(id as string) }, { _id: id as string }] }
+      : { _id: id as string }) as any;
 
     const result = await menuCollection.updateOne(
       query,
@@ -359,9 +359,9 @@ app.delete('/api/all-menu/:id', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
 
-    const query = ObjectId.isValid(id) 
-      ? { $or: [{ _id: new ObjectId(id as string) }, { _id: id }] }
-      : { _id: id };
+    const query = (ObjectId.isValid(id as string) 
+      ? { $or: [{ _id: new ObjectId(id as string) }, { _id: id as string }] }
+      : { _id: id as string }) as any;
 
     const result = await menuCollection.deleteOne(query);
 

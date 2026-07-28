@@ -17,145 +17,354 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     }
 });
-async function run() {
+const database = client.db("foodflow");
+const menuCollection = database.collection("all-menu");
+const ordersCollection = database.collection("orders");
+const reviewsCollection = database.collection("reviews");
+// Connect to MongoDB asynchronously, but don't block route registration
+client.connect().then(() => {
+    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+}).catch(console.dir);
+app.post('/api/all-menu', async (req, res) => {
+    const menu = req.body;
+    const result = await menuCollection.insertOne(menu);
+    res.send(result);
+});
+// GET ALL MENU ITEMS (Search, Filter, Sort & Pagination সহ)
+app.get('/api/all-menu', async (req, res) => {
     try {
-        const database = client.db("foodflow");
-        const menuCollection = database.collection("all-menu");
-        app.post('/api/all-menu', async (req, res) => {
-            const menu = req.body;
-            const result = await menuCollection.insertOne(menu);
-            res.send(result);
+        // ১. Query Parameters রিসিভ করা (ডিফল্ট ভ্যালু সহ)
+        const { search, // সার্চ কি-ওয়ার্ড (যেমন: burger, pizza)
+        category, // ক্যাটাগরি ফিল্টার
+        dietaryType, // veg, non-veg, vegan ফিল্টার
+        sort = 'newest', // newest, oldest, price-low, price-high
+        page = 1, // বর্তমান পেজ নম্বর
+        limit = 10, // প্রতি পেজে কতটি আইটেম দেখাবে
+         } = req.query;
+        // ২. Dynamic Query Filter অবজেক্ট তৈরি (Record<string, any> টাইপ যুক্ত করা হয়েছে)
+        const query = {};
+        // 🔍 Search Logic (নাম এবং সংক্ষিপ্ত বর্ণনায় খুঁজবে - Case-insensitive)
+        if (search && typeof search === 'string') {
+            query.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { shortDesc: { $regex: search, $options: 'i' } },
+            ];
+        }
+        // 🏷️ Category Filter Logic
+        if (category && typeof category === 'string') {
+            query.category = category;
+        }
+        // 🥗 Dietary Type Filter Logic
+        if (dietaryType && typeof dietaryType === 'string') {
+            query.dietaryType = dietaryType;
+        }
+        // ↕️ Sorting Logic (Record<string, 1 | -1> টাইপ যুক্ত করা হয়েছে)
+        let sortOptions = { _id: -1 }; // ডিফল্ট: নতুনগুলো আগে
+        if (sort === 'oldest') {
+            sortOptions = { _id: 1 };
+        }
+        else if (sort === 'price-low') {
+            sortOptions = { price: 1 };
+        }
+        else if (sort === 'price-high') {
+            sortOptions = { price: -1 };
+        }
+        else if (sort === 'newest') {
+            sortOptions = { _id: -1 };
+        }
+        // 📄 Pagination Calculation
+        const pageNum = parseInt(page, 10) || 1;
+        const limitNum = parseInt(limit, 10) || 10;
+        const skip = (pageNum - 1) * limitNum;
+        // ৩. ডাটাবেজ থেকে ডাটা এবং টোটাল কাউন্ট তুলে আনা
+        const [menuItems, totalItems] = await Promise.all([
+            menuCollection
+                .find(query)
+                .sort(sortOptions)
+                .skip(skip)
+                .limit(limitNum)
+                .toArray(),
+            menuCollection.countDocuments(query),
+        ]);
+        // ৪. Pagination Metadata হিসেব করা
+        const totalPages = Math.ceil(totalItems / limitNum);
+        // ৫. রেসপন্স পাঠানো
+        res.status(200).json({
+            success: true,
+            totalItems,
+            totalPages,
+            currentPage: pageNum,
+            limit: limitNum,
+            count: menuItems.length,
+            data: menuItems,
         });
-        // GET ALL MENU ITEMS (Search, Filter, Sort & Pagination সহ)
-        app.get('/api/all-menu', async (req, res) => {
-            try {
-                // ১. Query Parameters রিসিভ করা (ডিফল্ট ভ্যালু সহ)
-                const { search, // সার্চ কি-ওয়ার্ড (যেমন: burger, pizza)
-                category, // ক্যাটাগরি ফিল্টার
-                dietaryType, // veg, non-veg, vegan ফিল্টার
-                sort = 'newest', // newest, oldest, price-low, price-high
-                page = 1, // বর্তমান পেজ নম্বর
-                limit = 10, // প্রতি পেজে কতটি আইটেম দেখাবে
-                 } = req.query;
-                // ২. Dynamic Query Filter অবজেক্ট তৈরি (Record<string, any> টাইপ যুক্ত করা হয়েছে)
-                const query = {};
-                // 🔍 Search Logic (নাম এবং সংক্ষিপ্ত বর্ণনায় খুঁজবে - Case-insensitive)
-                if (search && typeof search === 'string') {
-                    query.$or = [
-                        { name: { $regex: search, $options: 'i' } },
-                        { shortDesc: { $regex: search, $options: 'i' } },
-                    ];
-                }
-                // 🏷️ Category Filter Logic
-                if (category && typeof category === 'string') {
-                    query.category = category;
-                }
-                // 🥗 Dietary Type Filter Logic
-                if (dietaryType && typeof dietaryType === 'string') {
-                    query.dietaryType = dietaryType;
-                }
-                // ↕️ Sorting Logic (Record<string, 1 | -1> টাইপ যুক্ত করা হয়েছে)
-                let sortOptions = { _id: -1 }; // ডিফল্ট: নতুনগুলো আগে
-                if (sort === 'oldest') {
-                    sortOptions = { _id: 1 };
-                }
-                else if (sort === 'price-low') {
-                    sortOptions = { price: 1 };
-                }
-                else if (sort === 'price-high') {
-                    sortOptions = { price: -1 };
-                }
-                else if (sort === 'newest') {
-                    sortOptions = { _id: -1 };
-                }
-                // 📄 Pagination Calculation
-                const pageNum = parseInt(page, 10) || 1;
-                const limitNum = parseInt(limit, 10) || 10;
-                const skip = (pageNum - 1) * limitNum;
-                // ৩. ডাটাবেজ থেকে ডাটা এবং টোটাল কাউন্ট তুলে আনা
-                const [menuItems, totalItems] = await Promise.all([
-                    menuCollection
-                        .find(query)
-                        .sort(sortOptions)
-                        .skip(skip)
-                        .limit(limitNum)
-                        .toArray(),
-                    menuCollection.countDocuments(query),
-                ]);
-                // ৪. Pagination Metadata হিসেব করা
-                const totalPages = Math.ceil(totalItems / limitNum);
-                // ৫. রেসপন্স পাঠানো
-                res.status(200).json({
-                    success: true,
-                    totalItems,
-                    totalPages,
-                    currentPage: pageNum,
-                    limit: limitNum,
-                    count: menuItems.length,
-                    data: menuItems,
-                });
-            }
-            catch (error) {
-                console.error('Error fetching menu items:', error);
-                res.status(500).json({
-                    success: false,
-                    message: 'সার্ভার থেকে ডেটা লোড করতে সমস্যা হয়েছে!',
-                    error: error.message,
-                });
-            }
-        });
-        // 2. GET SINGLE FOOD ITEM BY ID
-        app.get('/api/all-menu/:id', async (req, res) => {
-            try {
-                const { id } = req.params;
-                // 💡 ২. string id-কে new ObjectId(id) তে কনভার্ট করুন
-                const foodItem = await menuCollection.findOne({ _id: new ObjectId(id) });
-                if (!foodItem) {
-                    return res.status(404).json({
-                        success: false,
-                        message: 'এই আইডি-র কোনো খাবার পাওয়া যায়নি!',
-                    });
-                }
-                res.status(200).json({
-                    success: true,
-                    data: foodItem,
-                });
-            }
-            catch (error) {
-                console.error('Error fetching single food item:', error);
-                res.status(500).json({
-                    success: false,
-                    message: 'ডেটা ফেচ করতে সমস্যা হয়েছে!',
-                    error: error.message,
-                });
-            }
-        });
-        app.get('/api/featured', async (req, res) => {
-            try {
-                // 'products' এর জায়গায় আপনার MongoDB collection-এর আসল নাম দিন
-                const featuredItems = await database.collection('all-menu')
-                    .find({ isFeatured: true })
-                    .toArray();
-                res.status(200).json(featuredItems);
-            }
-            catch (error) {
-                res.status(500).json({ message: "Server error" });
-            }
-        });
-        await client.connect();
-        await client.db("admin").command({ ping: 1 });
-        console.log("Pinged your deployment. You successfully connected to MongoDB!");
     }
     catch (error) {
-        console.error("MongoDB Connection Error:", error);
+        console.error('Error fetching menu items:', error);
+        res.status(500).json({
+            success: false,
+            message: 'সার্ভার থেকে ডেটা লোড করতে সমস্যা হয়েছে!',
+            error: error.message,
+        });
     }
-    // NOTE: Production API-er jonno client.close() na korai bhalo, karon API request chalu thake.
-}
-run().catch(console.dir);
+});
+// 2. GET SINGLE FOOD ITEM BY ID
+app.get('/api/all-menu/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        // 💡 string id-কে new ObjectId(id) তে কনভার্ট করুন এবং string হিসেবেও চেক করুন
+        const query = (ObjectId.isValid(id)
+            ? { $or: [{ _id: new ObjectId(id) }, { _id: id }] }
+            : { _id: id });
+        const foodItem = await menuCollection.findOne(query);
+        if (!foodItem) {
+            return res.status(404).json({
+                success: false,
+                message: 'এই আইডি-র কোনো খাবার পাওয়া যায়নি!',
+            });
+        }
+        res.status(200).json({
+            success: true,
+            data: foodItem,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching single food item:', error);
+        res.status(500).json({
+            success: false,
+            message: 'ডেটা ফেচ করতে সমস্যা হয়েছে!',
+            error: error.message,
+        });
+    }
+});
+app.get('/api/featured', async (req, res) => {
+    try {
+        // 'products' এর জায়গায় আপনার MongoDB collection-এর আসল নাম দিন
+        const featuredItems = await database.collection('all-menu')
+            .find({ isFeatured: true })
+            .toArray();
+        res.status(200).json(featuredItems);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Server error" });
+    }
+});
+// ==========================================================
+// 📦 ORDER API ROUTES (নতুন যুক্ত করা হয়েছে)
+// ==========================================================
+// ১. নতুন অর্ডার তৈরি করা (POST: /api/orders)
+app.post('/api/orders', async (req, res) => {
+    try {
+        const orderData = req.body;
+        // সার্ভারে অর্ডার সৃষ্টির সময় একটি টাইমস্ট্যাম্প যুক্ত করা
+        const newOrder = {
+            ...orderData,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+        const result = await ordersCollection.insertOne(newOrder);
+        res.status(201).json({
+            success: true,
+            message: '🎉 আপনার অর্ডারটি সফলভাবে ডাটাবেসে সংরক্ষণ করা হয়েছে!',
+            insertedId: result.insertedId,
+        });
+    }
+    catch (error) {
+        console.error('Order creation error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'অর্ডার সেভ করতে সমস্যা হয়েছে!',
+            error: error.message,
+        });
+    }
+});
+// ২. সব অর্ডার দেখার জন্য (GET: /api/orders - Admin-এর জন্য কাজে লাগবে)
+// app.get('/api/orders', async (req: Request, res: Response) => {
+//   try {
+//     const orders = await ordersCollection
+//       .find()
+//       .sort({ createdAt: -1 }) // নতুন অর্ডারগুলো আগে দেখাবে
+//       .toArray();
+//     res.status(200).json({
+//       success: true,
+//       count: orders.length,
+//       data: orders,
+//     });
+//   } catch (error: any) {
+//     console.error('Error fetching orders:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'অর্ডারগুলো ফেচ করতে সমস্যা হয়েছে!',
+//       error: error.message,
+//     });
+//   }
+// });
+// 📦 সব অর্ডার ফেচ করার জন্য GET মেথড (index.ts / server.ts)
+app.get('/api/orders', async (req, res) => {
+    try {
+        const orders = await ordersCollection
+            .find()
+            .sort({ createdAt: -1 })
+            .toArray();
+        return res.status(200).json({
+            success: true,
+            count: orders.length,
+            data: orders,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching orders:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'অর্ডারগুলো লোড করতে সমস্যা হয়েছে!',
+            error: error.message,
+        });
+    }
+});
+// ৩. Update Order Status (Fixed db issue & ObjectId cast)
+app.patch('/api/orders/:id', async (req, res) => {
+    try {
+        const id = req.params.id; // 👈 string টাইপে কাস্ট করা হয়েছে
+        const { status } = req.body;
+        if (!id || !ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ অর্ডার ID!' });
+        }
+        const result = await ordersCollection.updateOne(// 👈 db.collection এর বদলে ordersCollection
+        { _id: new ObjectId(id) }, { $set: { status, updatedAt: new Date().toISOString() } });
+        res.status(200).json({ success: true, message: 'Status updated successfully' });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: 'Failed to update status' });
+    }
+});
+// ৪. Delete Order API (Fixed db issue & Overload Error)
+app.delete('/api/orders/:id', async (req, res) => {
+    try {
+        const id = req.params.id; // 👈 string টাইপ নিশ্চিত করা হয়েছে
+        // 1. Check if ID is valid MongoDB ObjectId
+        if (!id || !ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: 'অবৈধ বা ভুল অর্ডার ID!'
+            });
+        }
+        // 2. Delete from MongoDB using ordersCollection
+        const result = await ordersCollection.deleteOne({
+            _id: new ObjectId(id),
+        });
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'অর্ডারটি খুঁজে পাওয়া যায়নি!'
+            });
+        }
+        // 3. Return Success Response
+        return res.status(200).json({
+            success: true,
+            message: 'অর্ডারটি সফলভাবে মুছে ফেলা হয়েছে!'
+        });
+    }
+    catch (error) {
+        console.error('Delete Error in Express:', error);
+        return res.status(500).json({
+            success: false,
+            message: error?.message || 'সার্ভারে অভ্যন্তরীণ ত্রুটি হয়েছে!'
+        });
+    }
+});
+//dashboard er all foods e delete and update er jonno api route create kora holo
+// ✏️ UPDATE MENU ITEM (PUT: /api/all-menu/:id)
+app.put('/api/all-menu/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const updatedData = req.body;
+        // _id ফিল্ড রিমুভ করে দেওয়া হচ্ছে যাতে MongoDB error না দেয়
+        delete updatedData._id;
+        const query = (ObjectId.isValid(id)
+            ? { $or: [{ _id: new ObjectId(id) }, { _id: id }] }
+            : { _id: id });
+        const result = await menuCollection.updateOne(query, { $set: updatedData });
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ success: false, message: 'খাবারটি খুঁজে পাওয়া যায়নি!' });
+        }
+        res.status(200).json({
+            success: true,
+            message: 'খাবার তথ্য সফলভাবে আপডেট করা হয়েছে!',
+        });
+    }
+    catch (error) {
+        console.error('Update Menu Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+// 🗑️ DELETE MENU ITEM (DELETE: /api/all-menu/:id)
+app.delete('/api/all-menu/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const query = (ObjectId.isValid(id)
+            ? { $or: [{ _id: new ObjectId(id) }, { _id: id }] }
+            : { _id: id });
+        const result = await menuCollection.deleteOne(query);
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ success: false, message: 'খাবারটি খুঁজে পাওয়া যায়নি!' });
+        }
+        res.status(200).json({
+            success: true,
+            message: 'খাবারটি সফলভাবে মুছে ফেলা হয়েছে!',
+        });
+    }
+    catch (error) {
+        console.error('Delete Menu Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+// Express Routes using Native MongoDB Driver
+// ১. POST /api/reviews - রিভিউ সেভ করার জন্য
+app.post('/api/reviews', async (req, res) => {
+    try {
+        const { foodId, userName, rating, comment } = req.body;
+        if (!foodId || !userName || !rating || !comment) {
+            return res.status(400).json({ success: false, message: 'All fields are required.' });
+        }
+        const newReview = {
+            foodId,
+            userName,
+            rating: Number(rating),
+            comment,
+            createdAt: new Date()
+        };
+        // db এর জায়গায় reviewsCollection ব্যবহার করা হয়েছে
+        const result = await reviewsCollection.insertOne(newReview);
+        res.status(201).json({
+            success: true,
+            data: { _id: result.insertedId, ...newReview },
+            message: 'Review added successfully!'
+        });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+// ২. GET /api/reviews - রিভিউ লোড করার জন্য
+app.get('/api/reviews', async (req, res) => {
+    try {
+        const { foodId } = req.query;
+        const query = foodId ? { foodId: foodId } : {};
+        const reviews = await reviewsCollection
+            .find(query)
+            .sort({ createdAt: -1 })
+            .toArray();
+        res.status(200).json({ success: true, data: reviews });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 app.get('/', (req, res) => {
     res.send('Hello World!.This is my first express server with typescript.so can be run');
 });
 app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
 });
+export default app;
 //# sourceMappingURL=server.js.map

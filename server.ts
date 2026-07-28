@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb'; //   একদম ওপরে এটি ইম্পোর্ট 
+
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -26,6 +27,7 @@ const client = new MongoClient(uri, {
 
 const database = client.db("foodflow");
 const menuCollection = database.collection("all-menu");
+const ordersCollection = database.collection("orders");
 
 // Connect to MongoDB asynchronously, but don't block route registration
 client.connect().then(() => {
@@ -166,6 +168,209 @@ app.get('/api/featured', async (req, res) => {
     res.status(200).json(featuredItems);
   } catch (error) {
     res.status(500).json({ message: "Server error"});
+  }
+});
+
+
+// ==========================================================
+// 📦 ORDER API ROUTES (নতুন যুক্ত করা হয়েছে)
+// ==========================================================
+
+// ১. নতুন অর্ডার তৈরি করা (POST: /api/orders)
+app.post('/api/orders', async (req: Request, res: Response) => {
+  try {
+    const orderData = req.body;
+
+    // সার্ভারে অর্ডার সৃষ্টির সময় একটি টাইমস্ট্যাম্প যুক্ত করা
+    const newOrder = {
+      ...orderData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const result = await ordersCollection.insertOne(newOrder);
+
+    res.status(201).json({
+      success: true,
+      message: '🎉 আপনার অর্ডারটি সফলভাবে ডাটাবেসে সংরক্ষণ করা হয়েছে!',
+      insertedId: result.insertedId,
+    });
+  } catch (error: any) {
+    console.error('Order creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'অর্ডার সেভ করতে সমস্যা হয়েছে!',
+      error: error.message,
+    });
+  }
+});
+
+// ২. সব অর্ডার দেখার জন্য (GET: /api/orders - Admin-এর জন্য কাজে লাগবে)
+// app.get('/api/orders', async (req: Request, res: Response) => {
+//   try {
+//     const orders = await ordersCollection
+//       .find()
+//       .sort({ createdAt: -1 }) // নতুন অর্ডারগুলো আগে দেখাবে
+//       .toArray();
+
+//     res.status(200).json({
+//       success: true,
+//       count: orders.length,
+//       data: orders,
+//     });
+//   } catch (error: any) {
+//     console.error('Error fetching orders:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'অর্ডারগুলো ফেচ করতে সমস্যা হয়েছে!',
+//       error: error.message,
+//     });
+//   }
+// });
+
+// 📦 সব অর্ডার ফেচ করার জন্য GET মেথড (index.ts / server.ts)
+app.get('/api/orders', async (req: Request, res: Response) => {
+  try {
+    const orders = await ordersCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    return res.status(200).json({
+      success: true,
+      count: orders.length,
+      data: orders,
+    });
+  } catch (error: any) {
+    console.error('Error fetching orders:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'অর্ডারগুলো লোড করতে সমস্যা হয়েছে!',
+      error: error.message,
+    });
+  }
+});
+
+// ৩. Update Order Status (Fixed db issue & ObjectId cast)
+app.patch('/api/orders/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string; // 👈 string টাইপে কাস্ট করা হয়েছে
+    const { status } = req.body;
+
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'অবৈধ অর্ডার ID!' });
+    }
+
+    const result = await ordersCollection.updateOne( // 👈 db.collection এর বদলে ordersCollection
+      { _id: new ObjectId(id) },
+      { $set: { status, updatedAt: new Date().toISOString() } }
+    );
+
+    res.status(200).json({ success: true, message: 'Status updated successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to update status' });
+  }
+});
+
+
+// ৪. Delete Order API (Fixed db issue & Overload Error)
+app.delete('/api/orders/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string; // 👈 string টাইপ নিশ্চিত করা হয়েছে
+
+    // 1. Check if ID is valid MongoDB ObjectId
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'অবৈধ বা ভুল অর্ডার ID!' 
+      });
+    }
+
+    // 2. Delete from MongoDB using ordersCollection
+    const result = await ordersCollection.deleteOne({ // 👈 db.collection-এর জায়গায় ordersCollection
+      _id: new ObjectId(id),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'অর্ডারটি খুঁজে পাওয়া যায়নি!' 
+      });
+    }
+
+    // 3. Return Success Response
+    return res.status(200).json({ 
+      success: true, 
+      message: 'অর্ডারটি সফলভাবে মুছে ফেলা হয়েছে!' 
+    });
+
+  } catch (error: any) {
+    console.error('Delete Error in Express:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: error?.message || 'সার্ভারে অভ্যন্তরীণ ত্রুটি হয়েছে!' 
+    });
+  }
+});
+
+
+
+//dashboard er all foods e delete and update er jonno api route create kora holo
+
+// ✏️ UPDATE MENU ITEM (PUT: /api/all-menu/:id)
+app.put('/api/all-menu/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const updatedData = req.body;
+
+    // _id ফিল্ড রিমুভ করে দেওয়া হচ্ছে যাতে MongoDB error না দেয়
+    delete updatedData._id;
+
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'অবৈধ খাবার ID!' });
+    }
+
+    const result = await menuCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updatedData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ success: false, message: 'খাবারটি খুঁজে পাওয়া যায়নি!' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'খাবার তথ্য সফলভাবে আপডেট করা হয়েছে!',
+    });
+  } catch (error: any) {
+    console.error('Update Menu Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 🗑️ DELETE MENU ITEM (DELETE: /api/all-menu/:id)
+app.delete('/api/all-menu/:id', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'অবৈধ খাবার ID!' });
+    }
+
+    const result = await menuCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ success: false, message: 'খাবারটি খুঁজে পাওয়া যায়নি!' });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'খাবারটি সফলভাবে মুছে ফেলা হয়েছে!',
+    });
+  } catch (error: any) {
+    console.error('Delete Menu Error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

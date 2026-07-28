@@ -28,6 +28,7 @@ const client = new MongoClient(uri, {
 const database = client.db("foodflow");
 const menuCollection = database.collection("all-menu");
 const ordersCollection = database.collection("orders");
+const reviewsCollection = database.collection("reviews");
 
 // Connect to MongoDB asynchronously, but don't block route registration
 client.connect().then(() => {
@@ -373,6 +374,57 @@ app.delete('/api/all-menu/:id', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+
+// Express Routes using Native MongoDB Driver
+
+// ১. POST /api/reviews - রিভিউ সেভ করার জন্য
+app.post('/api/reviews', async (req: Request, res: Response) => {
+  try {
+    const { foodId, userName, rating, comment } = req.body;
+
+    if (!foodId || !userName || !rating || !comment) {
+      return res.status(400).json({ success: false, message: 'All fields are required.' });
+    }
+
+    const newReview = {
+      foodId,
+      userName,
+      rating: Number(rating),
+      comment,
+      createdAt: new Date()
+    };
+
+    // db এর জায়গায় reviewsCollection ব্যবহার করা হয়েছে
+    const result = await reviewsCollection.insertOne(newReview);
+
+    res.status(201).json({
+      success: true,
+      data: { _id: result.insertedId, ...newReview },
+      message: 'Review added successfully!'
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ২. GET /api/reviews - রিভিউ লোড করার জন্য
+app.get('/api/reviews', async (req: Request, res: Response) => {
+  try {
+    const { foodId } = req.query;
+    const query = foodId ? { foodId: foodId as string } : {};
+
+    const reviews = await reviewsCollection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.status(200).json({ success: true, data: reviews });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Hello World!.This is my first express server with typescript.so can be run');

@@ -426,6 +426,7 @@ app.get('/api/reviews', async (req: Request, res: Response) => {
       .toArray();
 
     res.status(200).json({ success: true, data: reviews });
+    // console.log('Fetched reviews:', reviews);
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -550,6 +551,103 @@ app.get('/api/admin/dashboard-stats', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+
+
+
+// ==========================================================
+// 👤 USER PROFILE API ROUTES (নতুন যুক্ত করুন)
+// ==========================================================
+
+// ১. GET User Profile by Email or ID (GET: /api/user/profile)
+app.get('/api/user/profile', async (req: Request, res: Response) => {
+  try {
+    const { email, id } = req.query;
+
+    if (!email && !id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email or User ID is required',
+      });
+    }
+
+    let query = {};
+    if (id && typeof id === 'string') {
+      query = ObjectId.isValid(id)
+        ? { $or: [{ _id: new ObjectId(id) }, { _id: id }] }
+        : { _id: id };
+    } else if (email && typeof email === 'string') {
+      query = { email: email };
+    }
+
+    const user = await usersCollection.findOne(query);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'ইউজার খুঁজে পাওয়া যায়নি!',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error: any) {
+    console.error('Error fetching user profile:', error);
+    res.status(500).json({
+      success: false,
+      message: 'প্রোফাইল লোড করতে সমস্যা হয়েছে!',
+      error: error.message,
+    });
+  }
+});
+
+// ২. UPDATE User Profile (PUT: /api/user/profile)
+app.put('/api/user/profile', async (req: Request, res: Response) => {
+  try {
+    const { email, name, image, phone, address } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'ইউজারের ইমেইল প্রদান করা বাধ্যতামূলক!',
+      });
+    }
+
+    // আপডেটের জন্য ফিল্ড অবজেক্ট তৈরি
+    const updateDoc: Record<string, any> = {};
+    if (name) updateDoc.name = name;
+    if (image) updateDoc.image = image;
+    if (phone) updateDoc.phone = phone;
+    if (address) updateDoc.address = address;
+    updateDoc.updatedAt = new Date().toISOString();
+
+    const result = await usersCollection.updateOne(
+      { email: email },
+      { $set: updateDoc }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'ইউজার খুঁজে পাওয়া যায়নি!',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: '🎉 প্রোফাইল তথ্য সফলভাবে আপডেট করা হয়েছে!',
+    });
+  } catch (error: any) {
+    console.error('Error updating user profile:', error);
+    res.status(500).json({
+      success: false,
+      message: 'প্রোফাইল আপডেট করতে সমস্যা হয়েছে!',
+      error: error.message,
+    });
   }
 });
 
